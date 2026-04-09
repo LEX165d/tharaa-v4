@@ -1,0 +1,73 @@
+name: Build iOS IPA
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+
+    # هذا السطر مهم لأنه يخلي GitHub يسمح باستخدام Node 22 بدون إيقاف الـ workflow
+    env:
+      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
+
+    steps:
+      # 1) نسحب المشروع من GitHub
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 2) نضبط Node.js على الإصدار الصحيح
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # 3) تثبيت الحزم + capacitor + iOS
+      - name: Install Dependencies
+        run: |
+          npm install
+          npm install @capacitor/core @capacitor/cli @capacitor/ios
+
+      # 4) بناء مشروع الويب (Vite)
+      - name: Build Web App
+        run: |
+          npm run build
+
+      # 5) بناء مشروع iOS داخل macOS
+      - name: Rebuild iOS Platform on macOS
+        run: |
+          npx cap add ios
+          npx cap sync ios
+
+      # 6) تثبيت CocoaPods (مهم جداً لمشاريع iOS)
+      - name: Install CocoaPods
+        run: |
+          cd ios
+          pod install
+
+      # 7) بناء Xcode Archive
+      - name: Build iOS Archive
+        run: |
+          cd ios
+          xcodebuild \
+            -workspace App/App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -archivePath ../build/App.xcarchive \
+            archive
+
+      # 8) تصدير IPA
+      - name: Export IPA
+        run: |
+          xcodebuild \
+            -exportArchive \
+            -archivePath build/App.xcarchive \
+            -exportPath build \
+            -exportOptionsPlist ios/App/exportOptions.plist
+
+      # 9) رفع ملف IPA كـ Artifact
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: iOS-IPA
+          path: ios/build/**/*.ipa
